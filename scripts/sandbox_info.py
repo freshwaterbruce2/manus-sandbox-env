@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""
-sandbox_info.py — Manus Sandbox Environment Inspector
+"""sandbox_info.py — Manus Sandbox Environment Inspector.
 
 Prints a summary of the current sandbox state: OS, Python version,
 installed packages, disk usage, and GitHub auth status.
 """
 
-import subprocess
-import sys
+import os
 import platform
 import shutil
-import os
+import subprocess
+import sys
 from datetime import datetime
 
 
@@ -24,6 +23,7 @@ def run(cmd):
 
 
 def section(title):
+    """Print a section header with the given title."""
     width = 50
     print(f"\n{'=' * width}")
     print(f"  {title}")
@@ -31,6 +31,7 @@ def section(title):
 
 
 def main():
+    """Run the sandbox information gathering and printing."""
     print(f"\n{'#' * 50}")
     print(f"  Manus Sandbox Info — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'#' * 50}")
@@ -63,7 +64,9 @@ def main():
     print(f"  Email    : {git_email}")
 
     section("Recent Repos")
-    repos = run("gh repo list --limit 5 --json name,isPrivate,updatedAt --jq '.[] | [.name, (if .isPrivate then \"private\" else \"public\" end), .updatedAt] | @tsv'")
+    jq_query = '.[] | [.name, (if .isPrivate then "private" else "public" end), .updatedAt] | @tsv'
+    gh_cmd = f"gh repo list --limit 5 --json name,isPrivate,updatedAt --jq '{jq_query}'"
+    repos = run(gh_cmd)
     for line in repos.splitlines():
         parts = line.split("\t")
         if len(parts) >= 2:

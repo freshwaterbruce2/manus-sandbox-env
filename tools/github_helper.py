@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""
-github_helper.py — Reusable GitHub CLI wrapper for the Manus sandbox.
+"""github_helper.py — Reusable GitHub CLI wrapper for the Manus sandbox.
 
 Provides convenience functions around common `gh` CLI operations so that
 other scripts don't need to repeat subprocess boilerplate.
 """
 
-import subprocess
 import json
+import subprocess
 from typing import Optional
 
 
@@ -23,8 +22,7 @@ def get_authenticated_user() -> dict:
 
 
 def list_repos(limit: int = 10, visibility: str = "all") -> list[dict]:
-    """
-    List repositories for the authenticated user.
+    """List repositories for the authenticated user.
 
     Args:
         limit: Maximum number of repos to return.
@@ -32,18 +30,17 @@ def list_repos(limit: int = 10, visibility: str = "all") -> list[dict]:
 
     Returns:
         List of repo dicts with keys: name, isPrivate, description, updatedAt.
+
     """
     vis_flag = f"--visibility {visibility}" if visibility != "all" else ""
     result = _run(
-        f"gh repo list --limit {limit} {vis_flag} "
-        f"--json name,isPrivate,description,updatedAt"
+        f"gh repo list --limit {limit} {vis_flag} --json name,isPrivate,description,updatedAt"
     )
     return json.loads(result.stdout)
 
 
 def create_issue(title: str, body: str, repo: Optional[str] = None) -> str:
-    """
-    Create a GitHub issue and return its URL.
+    """Create a GitHub issue and return its URL.
 
     Args:
         title: Issue title.
@@ -52,6 +49,7 @@ def create_issue(title: str, body: str, repo: Optional[str] = None) -> str:
 
     Returns:
         URL of the created issue.
+
     """
     repo_flag = f"--repo {repo}" if repo else ""
     result = _run(f'gh issue create {repo_flag} --title "{title}" --body "{body}"')
@@ -59,8 +57,7 @@ def create_issue(title: str, body: str, repo: Optional[str] = None) -> str:
 
 
 def create_pr(title: str, body: str, base: str = "main") -> str:
-    """
-    Create a pull request from the current branch and return its URL.
+    """Create a pull request from the current branch and return its URL.
 
     Args:
         title: PR title.
@@ -69,25 +66,26 @@ def create_pr(title: str, body: str, base: str = "main") -> str:
 
     Returns:
         URL of the created pull request.
+
     """
-    result = _run(
-        f'gh pr create --title "{title}" --body "{body}" --base {base}'
-    )
+    result = _run(f'gh pr create --title "{title}" --body "{body}" --base {base}')
     return result.stdout.strip()
 
 
 def get_repo_info(repo: Optional[str] = None) -> dict:
-    """
-    Return metadata about a repository.
+    """Return metadata about a repository.
 
     Args:
         repo: Optional repo in 'owner/name' format; defaults to current repo.
 
     Returns:
         Dict with repo metadata.
+
     """
     repo_flag = f"--repo {repo}" if repo else ""
-    result = _run(f"gh repo view {repo_flag} --json name,description,isPrivate,url,stargazerCount,forkCount")
+    result = _run(
+        f"gh repo view {repo_flag} --json name,description,isPrivate,url,stargazerCount,forkCount"
+    )
     return json.loads(result.stdout)
 
 

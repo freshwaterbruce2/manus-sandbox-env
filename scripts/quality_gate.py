@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""quality_gate.py — The Manus Sandbox Quality Gate.
+
+This script enforces strict code and documentation standards.
+It runs Ruff for Python linting/formatting and markdownlint for Markdown.
+Any failure here prevents a commit or merge.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def run_command(cmd, description):
+    """Run a shell command and return (success, output)."""
+    print(f"--- Running {description} ---")
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            print(f"✅ {description} passed.")
+            return True, result.stdout
+        else:
+            print(f"❌ {description} failed.")
+            print(result.stdout)
+            print(result.stderr)
+            return False, result.stdout + result.stderr
+    except Exception as e:
+        print(f"❌ Error running {description}: {e}")
+        return False, str(e)
+
+
+def main():
+    """Execute the quality gate checks for the entire repository."""
+    repo_root = Path(__file__).parent.parent.absolute()
+    os.chdir(repo_root)
+
+    print(f"Starting Quality Gate check in: {repo_root}\n")
+
+    overall_success = True
+
+    # 1. Python Formatting (Ruff)
+    success, _ = run_command("ruff format --check .", "Python Formatting (Ruff)")
+    if not success:
+        overall_success = False
+
+    # 2. Python Linting (Ruff)
+    success, _ = run_command("ruff check .", "Python Linting (Ruff)")
+    if not success:
+        overall_success = False
+
+    # 3. Markdown Linting (markdownlint)
+    # We check all .md files excluding .git
+    success, _ = run_command(
+        "markdownlint '**/*.md' --ignore 'node_modules'", "Markdown Linting (markdownlint)"
+    )
+    if not success:
+        overall_success = False
+
+    print("\n" + "=" * 40)
+    if overall_success:
+        print("🎉 QUALITY GATE PASSED: Repository is clean.")
+        sys.exit(0)
+    else:
+        print("🚨 QUALITY GATE FAILED: Please fix the issues above.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
