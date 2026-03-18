@@ -13,16 +13,16 @@ import sys
 from datetime import datetime
 
 
-def run(cmd):
+def run(cmd: str) -> str:
     """Run a shell command and return stdout."""
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
-        return result.stdout.strip()
+        return str(result.stdout.strip())
     except Exception as e:
         return f"<error: {e}>"
 
 
-def section(title):
+def section(title: str) -> None:
     """Print a section header with the given title."""
     width = 50
     print(f"\n{'=' * width}")
@@ -30,7 +30,7 @@ def section(title):
     print(f"{'=' * width}")
 
 
-def main():
+def main() -> None:
     """Run the sandbox information gathering and printing."""
     print(f"\n{'#' * 50}")
     print(f"  Manus Sandbox Info — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

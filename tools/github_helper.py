@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """github_helper.py — Reusable GitHub CLI wrapper for the Manus sandbox.
 
 Provides convenience functions around common `gh` CLI operations so that
@@ -7,21 +6,22 @@ other scripts don't need to repeat subprocess boilerplate.
 
 import json
 import subprocess
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 
-def _run(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
+def _run(cmd: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Execute a shell command and return the CompletedProcess result."""
     return subprocess.run(cmd, shell=True, capture_output=True, text=True, check=check)
 
 
-def get_authenticated_user() -> dict:
+def get_authenticated_user() -> Dict[str, Any]:
     """Return the currently authenticated GitHub user as a dict."""
     result = _run("gh api user")
-    return json.loads(result.stdout)
+    data: Dict[str, Any] = json.loads(result.stdout)
+    return data
 
 
-def list_repos(limit: int = 10, visibility: str = "all") -> list[dict]:
+def list_repos(limit: int = 10, visibility: str = "all") -> List[Dict[str, Any]]:
     """List repositories for the authenticated user.
 
     Args:
@@ -36,7 +36,8 @@ def list_repos(limit: int = 10, visibility: str = "all") -> list[dict]:
     result = _run(
         f"gh repo list --limit {limit} {vis_flag} --json name,isPrivate,description,updatedAt"
     )
-    return json.loads(result.stdout)
+    data: List[Dict[str, Any]] = json.loads(result.stdout)
+    return data
 
 
 def create_issue(title: str, body: str, repo: Optional[str] = None) -> str:
@@ -53,7 +54,7 @@ def create_issue(title: str, body: str, repo: Optional[str] = None) -> str:
     """
     repo_flag = f"--repo {repo}" if repo else ""
     result = _run(f'gh issue create {repo_flag} --title "{title}" --body "{body}"')
-    return result.stdout.strip()
+    return str(result.stdout.strip())
 
 
 def create_pr(title: str, body: str, base: str = "main") -> str:
@@ -69,10 +70,10 @@ def create_pr(title: str, body: str, base: str = "main") -> str:
 
     """
     result = _run(f'gh pr create --title "{title}" --body "{body}" --base {base}')
-    return result.stdout.strip()
+    return str(result.stdout.strip())
 
 
-def get_repo_info(repo: Optional[str] = None) -> dict:
+def get_repo_info(repo: Optional[str] = None) -> Dict[str, Any]:
     """Return metadata about a repository.
 
     Args:
@@ -86,7 +87,8 @@ def get_repo_info(repo: Optional[str] = None) -> dict:
     result = _run(
         f"gh repo view {repo_flag} --json name,description,isPrivate,url,stargazerCount,forkCount"
     )
-    return json.loads(result.stdout)
+    data: Dict[str, Any] = json.loads(result.stdout)
+    return data
 
 
 if __name__ == "__main__":

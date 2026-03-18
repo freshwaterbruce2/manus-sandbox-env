@@ -2,7 +2,11 @@
 """quality_gate.py — The Manus Sandbox Quality Gate.
 
 This script enforces strict code and documentation standards.
-It runs Ruff for Python linting/formatting and markdownlint for Markdown.
+It runs:
+1. Ruff (Python Formatting & Linting)
+2. Mypy (Static Type Checking)
+3. Markdownlint (Markdown Documentation Standards)
+
 Any failure here prevents a commit or merge.
 """
 
@@ -10,28 +14,42 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Tuple
 
 
-def run_command(cmd, description):
-    """Run a shell command and return (success, output)."""
+def run_command(cmd: str, description: str) -> Tuple[bool, str]:
+    """Run a shell command and return (success, output).
+
+    Args:
+        cmd: The shell command to execute.
+        description: A human-readable description of the command.
+
+    Returns:
+        A tuple of (success_boolean, combined_stdout_stderr).
+
+    """
     print(f"--- Running {description} ---")
     try:
+        # Use check=False to capture non-zero exit codes as failures
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
         if result.returncode == 0:
             print(f"✅ {description} passed.")
             return True, result.stdout
         else:
             print(f"❌ {description} failed.")
-            print(result.stdout)
-            print(result.stderr)
+            if result.stdout:
+                print(f"STDOUT:\n{result.stdout}")
+            if result.stderr:
+                print(f"STDERR:\n{result.stderr}")
             return False, result.stdout + result.stderr
     except Exception as e:
         print(f"❌ Error running {description}: {e}")
         return False, str(e)
 
 
-def main():
+def main() -> None:
     """Execute the quality gate checks for the entire repository."""
+    # Ensure we are in the repository root
     repo_root = Path(__file__).parent.parent.absolute()
     os.chdir(repo_root)
 
@@ -49,8 +67,13 @@ def main():
     if not success:
         overall_success = False
 
-    # 3. Markdown Linting (markdownlint)
-    # We check all .md files excluding .git
+    # 3. Static Type Checking (Mypy)
+    success, _ = run_command("mypy .", "Static Type Checking (Mypy)")
+    if not success:
+        overall_success = False
+
+    # 4. Markdown Linting (markdownlint)
+    # We check all .md files excluding .git and node_modules
     success, _ = run_command(
         "markdownlint '**/*.md' --ignore 'node_modules'", "Markdown Linting (markdownlint)"
     )

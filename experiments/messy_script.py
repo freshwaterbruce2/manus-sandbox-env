@@ -1,13 +1,11 @@
-"""
-Messy script module.
+"""Messy script module.
 
 This module provides a simple addition function for demonstration purposes.
 """
 
 
-def messy_function(a, b):
-    """
-    Perform a messy addition.
+def messy_function(a: int, b: int) -> int:
+    """Perform a messy addition.
 
     Args:
         a: First number.
@@ -15,6 +13,7 @@ def messy_function(a, b):
 
     Returns:
         The sum of a and b.
+
     """
     print("This is messy")
     return a + b
