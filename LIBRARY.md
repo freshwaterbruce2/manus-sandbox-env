@@ -185,6 +185,54 @@ Returns:
     Dict with repo metadata.
 ```
 
+## Module: `manus_cli.py`
+
+**Path:** `scripts/manus_cli.py`
+
+```text
+manus_cli.py — Unified CLI wrapper for the Manus sandbox environment.
+
+Provides a single entry point for all repository tasks:
+- check: Run the Quality Gate.
+- test: Run unit tests with pytest.
+- doc: Generate LIBRARY.md with autodoc.
+- release: Manage semantic versioning and tagging.
+- info: Display sandbox environment information.
+```
+
+### Functions in `manus_cli.py`
+
+#### `manus_cli.run_command()`
+
+```text
+Run a shell command and exit with its return code.
+```
+
+#### `manus_cli.main()`
+
+```text
+Run the Manus CLI entry point.
+```
+
+## Module: `pre_commit.py`
+
+**Path:** `scripts/pre_commit.py`
+
+```text
+pre_commit.py — Git pre-commit hook for the Manus sandbox.
+
+This script is called by Git before every commit. It runs the
+Quality Gate to ensure that no non-compliant code is committed.
+```
+
+### Functions in `pre_commit.py`
+
+#### `pre_commit.main()`
+
+```text
+Run the Quality Gate check as a pre-commit hook.
+```
+
 ## Module: `quality_gate.py`
 
 **Path:** `scripts/quality_gate.py`
@@ -295,4 +343,22 @@ Print a section header with the given title.
 
 ```text
 Run the sandbox information gathering and printing.
+```
+
+## Module: `setup_hooks.py`
+
+**Path:** `scripts/setup_hooks.py`
+
+```text
+setup_hooks.py — Setup script for Manus sandbox repository hooks.
+
+Installs the pre-commit hook into the .git/hooks directory.
+```
+
+### Functions in `setup_hooks.py`
+
+#### `setup_hooks.main()`
+
+```text
+Install the pre-commit hook into the .git/hooks directory.
 ```
