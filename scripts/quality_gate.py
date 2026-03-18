@@ -72,7 +72,12 @@ def main() -> None:
     if not success:
         overall_success = False
 
-    # 4. Markdown Linting (markdownlint)
+    # 4. Auto-Documentation Generation
+    success, _ = run_command("python3 scripts/autodoc.py", "Auto-Documentation Generation")
+    if not success:
+        overall_success = False
+
+    # 5. Markdown Linting (markdownlint)
     # We check all .md files excluding .git and node_modules
     success, _ = run_command(
         "markdownlint '**/*.md' --ignore 'node_modules'", "Markdown Linting (markdownlint)"
