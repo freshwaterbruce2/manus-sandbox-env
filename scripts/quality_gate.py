@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""quality_gate.py — The Manus Sandbox Quality Gate.
+"""quality_gate.py — The Repository Quality Gate.
 
 This script enforces strict code and documentation standards.
 It runs:
 1. Ruff (Python Formatting & Linting)
 2. Mypy (Static Type Checking)
 3. Markdownlint (Markdown Documentation Standards)
+4. Pytest (Automated Unit Testing)
+5. Auto-Documentation Generation (autodoc.py)
 
 Any failure here prevents a commit or merge.
 """

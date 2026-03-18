@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""manus_cli.py — Unified CLI wrapper for the Manus sandbox environment.
+"""repo_cli.py — Unified CLI wrapper for the sandbox environment.
 
 Provides a single entry point for all repository tasks:
 - check: Run the Quality Gate.
 - test: Run unit tests with pytest.
 - doc: Generate LIBRARY.md with autodoc.
 - release: Manage semantic versioning and tagging.
-- info: Display sandbox environment information.
+- info: Display system environment information.
 """
 
 import argparse
@@ -28,13 +28,13 @@ def run_command(cmd: str) -> None:
 
 
 def main() -> None:
-    """Run the Manus CLI entry point."""
+    """Run the Repository CLI entry point."""
     # Ensure we are in the repository root
     repo_root = Path(__file__).parent.parent.absolute()
     os.chdir(repo_root)
 
     parser = argparse.ArgumentParser(
-        description="Manus Sandbox CLI — Unified Repository Management",
+        description="Repository CLI — Unified Environment Management",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
@@ -42,7 +42,7 @@ Commands:
   test       Run unit tests with pytest and coverage reporting.
   doc        Regenerate the LIBRARY.md documentation.
   release    Manage semantic versioning (major|minor|patch|show).
-  info       Display sandbox environment information.
+  info       Display system environment information.
         """,
     )
     parser.add_argument(
@@ -72,7 +72,7 @@ Commands:
         release_args = " ".join(args.args) if args.args else "show"
         run_command(f"python3 scripts/release.py {release_args}")
     elif args.command == "info":
-        run_command("python3 scripts/sandbox_info.py")
+        run_command("python3 scripts/sys_info.py")
 
 
 if __name__ == "__main__":

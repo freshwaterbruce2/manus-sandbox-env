@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""sandbox_info.py — Manus Sandbox Environment Inspector.
+"""sys_info.py — System Environment Inspector.
 
-Prints a summary of the current sandbox state: OS, Python version,
+Prints a summary of the current environment state: OS, Python version,
 installed packages, disk usage, and GitHub auth status.
 """
 
@@ -31,9 +31,9 @@ def section(title: str) -> None:
 
 
 def main() -> None:
-    """Run the sandbox information gathering and printing."""
+    """Run the system information gathering and printing."""
     print(f"\n{'#' * 50}")
-    print(f"  Manus Sandbox Info — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  System Environment Info — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'#' * 50}")
 
     section("System")

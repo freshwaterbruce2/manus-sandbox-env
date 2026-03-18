@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pre_commit.py — Git pre-commit hook for the Manus sandbox.
+"""pre_commit.py — Git pre-commit hook for the sandbox repository.
 
 This script is called by Git before every commit. It runs the
 Quality Gate to ensure that no non-compliant code is committed.
@@ -13,12 +13,6 @@ from pathlib import Path
 
 def main() -> None:
     """Run the Quality Gate check as a pre-commit hook."""
-    # This script is copied to .git/hooks/pre-commit
-    # We need to find the repo root relative to this script's location
-    # .git/hooks/pre-commit -> repo_root is two levels up
-    # Wait, the script is COPIED, not symlinked.
-    # We can use the GIT_DIR environment variable or find the .git directory.
-
     # Git sets the current working directory to the repo root during hooks
     repo_root = Path(os.getcwd()).absolute()
     os.chdir(repo_root)

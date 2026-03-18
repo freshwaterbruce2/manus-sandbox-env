@@ -185,41 +185,12 @@ Returns:
     Dict with repo metadata.
 ```
 
-## Module: `manus_cli.py`
-
-**Path:** `scripts/manus_cli.py`
-
-```text
-manus_cli.py — Unified CLI wrapper for the Manus sandbox environment.
-
-Provides a single entry point for all repository tasks:
-- check: Run the Quality Gate.
-- test: Run unit tests with pytest.
-- doc: Generate LIBRARY.md with autodoc.
-- release: Manage semantic versioning and tagging.
-- info: Display sandbox environment information.
-```
-
-### Functions in `manus_cli.py`
-
-#### `manus_cli.run_command()`
-
-```text
-Run a shell command and exit with its return code.
-```
-
-#### `manus_cli.main()`
-
-```text
-Run the Manus CLI entry point.
-```
-
 ## Module: `pre_commit.py`
 
 **Path:** `scripts/pre_commit.py`
 
 ```text
-pre_commit.py — Git pre-commit hook for the Manus sandbox.
+pre_commit.py — Git pre-commit hook for the sandbox repository.
 
 This script is called by Git before every commit. It runs the
 Quality Gate to ensure that no non-compliant code is committed.
@@ -238,13 +209,15 @@ Run the Quality Gate check as a pre-commit hook.
 **Path:** `scripts/quality_gate.py`
 
 ```text
-quality_gate.py — The Manus Sandbox Quality Gate.
+quality_gate.py — The Repository Quality Gate.
 
 This script enforces strict code and documentation standards.
 It runs:
 1. Ruff (Python Formatting & Linting)
 2. Mypy (Static Type Checking)
 3. Markdownlint (Markdown Documentation Standards)
+4. Pytest (Automated Unit Testing)
+5. Auto-Documentation Generation (autodoc.py)
 
 Any failure here prevents a commit or merge.
 ```
@@ -314,35 +287,33 @@ Returns:
 Run the release management process.
 ```
 
-## Module: `sandbox_info.py`
+## Module: `repo_cli.py`
 
-**Path:** `scripts/sandbox_info.py`
+**Path:** `scripts/repo_cli.py`
 
 ```text
-sandbox_info.py — Manus Sandbox Environment Inspector.
+repo_cli.py — Unified CLI wrapper for the sandbox environment.
 
-Prints a summary of the current sandbox state: OS, Python version,
-installed packages, disk usage, and GitHub auth status.
+Provides a single entry point for all repository tasks:
+- check: Run the Quality Gate.
+- test: Run unit tests with pytest.
+- doc: Generate LIBRARY.md with autodoc.
+- release: Manage semantic versioning and tagging.
+- info: Display system environment information.
 ```
 
-### Functions in `sandbox_info.py`
+### Functions in `repo_cli.py`
 
-#### `sandbox_info.run()`
+#### `repo_cli.run_command()`
 
 ```text
-Run a shell command and return stdout.
+Run a shell command and exit with its return code.
 ```
 
-#### `sandbox_info.section()`
+#### `repo_cli.main()`
 
 ```text
-Print a section header with the given title.
-```
-
-#### `sandbox_info.main()`
-
-```text
-Run the sandbox information gathering and printing.
+Run the Repository CLI entry point.
 ```
 
 ## Module: `setup_hooks.py`
@@ -361,4 +332,35 @@ Installs the pre-commit hook into the .git/hooks directory.
 
 ```text
 Install the pre-commit hook into the .git/hooks directory.
+```
+
+## Module: `sys_info.py`
+
+**Path:** `scripts/sys_info.py`
+
+```text
+sys_info.py — System Environment Inspector.
+
+Prints a summary of the current environment state: OS, Python version,
+installed packages, disk usage, and GitHub auth status.
+```
+
+### Functions in `sys_info.py`
+
+#### `sys_info.run()`
+
+```text
+Run a shell command and return stdout.
+```
+
+#### `sys_info.section()`
+
+```text
+Print a section header with the given title.
+```
+
+#### `sys_info.main()`
+
+```text
+Run the system information gathering and printing.
 ```
