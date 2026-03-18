@@ -1,0 +1,40 @@
+name: Quality Gate CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: "18"
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff mypy pytest pytest-cov
+
+    - name: Install Node.js dependencies
+      run: |
+        npm install -g markdownlint-cli
+
+    - name: Run Quality Gate
+      run: |
+        # Mocking 'gh' CLI for CI if needed, or ensuring scripts handle its absence
+        # For now, we assume 'gh' is not strictly required for the quality gate's core checks
+        # (formatting, linting, typing, testing, autodoc)
+        PYTHONPATH=. python scripts/quality_gate.py
