@@ -33,10 +33,10 @@ def list_repos(limit: int = 10, visibility: str = "all") -> list[dict]:
     Returns:
         List of repo dicts with keys: name, isPrivate, description, updatedAt.
     """
-    jq = ".[] | {name, isPrivate, description, updatedAt}"
+    vis_flag = f"--visibility {visibility}" if visibility != "all" else ""
     result = _run(
-        f"gh repo list --limit {limit} --visibility {visibility} "
-        f"--json name,isPrivate,description,updatedAt --jq '[{jq}]'"
+        f"gh repo list --limit {limit} {vis_flag} "
+        f"--json name,isPrivate,description,updatedAt"
     )
     return json.loads(result.stdout)
 
