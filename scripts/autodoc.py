@@ -23,9 +23,15 @@ def parse_python_file(filepath: Path) -> Dict[str, Any]:
     content = filepath.read_text()
     tree = ast.parse(content)
 
+    # Try to make path relative to CWD if possible, otherwise use absolute
+    try:
+        rel_path = str(filepath.relative_to(Path.cwd()))
+    except ValueError:
+        rel_path = str(filepath)
+
     module_info: Dict[str, Any] = {
         "name": filepath.stem,
-        "path": str(filepath.relative_to(Path.cwd())),
+        "path": rel_path,
         "docstring": extract_docstring(tree),
         "classes": [],
         "functions": [],
@@ -107,7 +113,8 @@ def main() -> None:
 
     for target_dir in target_dirs:
         for filepath in target_dir.glob("*.py"):
-            if filepath.name != Path(__file__).name:  # Don't document self
+            # Don't document self or __init__.py files
+            if filepath.name != Path(__file__).name and filepath.name != "__init__.py":
                 print(f"Processing {filepath}...")
                 all_modules_data.append(parse_python_file(filepath))
 
