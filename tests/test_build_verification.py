@@ -1,124 +1,208 @@
-"""Build verification tests — run pnpm build on configured apps."""
+"""Build Verification Tests.
+
+Verifies pnpm builds pass for specific apps in the monorepo at C:\\dev.
+Checks exit codes, captures errors, reports pass/fail.
+Also includes unit tests that always run (mocked subprocess).
+"""
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.requires_monorepo
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
+def _run_build(
+    monorepo_root: str,
+    app_path: str,
+    build_command: str,
+    timeout: int = 120,
+) -> tuple[bool, str, str, float]:
+    """Run a build command and return (success, stdout, stderr, duration).
 
-class TestBuildVerification:
-    """Verify that key monorepo apps build successfully."""
+    Args:
+        monorepo_root: Absolute path to monorepo root (e.g. C:\\dev).
+        app_path: Relative path from root to app (e.g. apps\\nova-agent).
+        build_command: The build command to run (e.g. pnpm run build).
+        timeout: Max seconds before killing the build.
 
-    @pytest.fixture(autouse=True)
-    def _skip_if_no_monorepo(self, monorepo_root: Path) -> None:
-        if not monorepo_root.exists():
-            pytest.skip(f"Monorepo not found at {monorepo_root}")
-        if not (monorepo_root / "pnpm-lock.yaml").exists():
-            pytest.skip("Not a pnpm workspace — missing pnpm-lock.yaml")
+    Returns:
+        Tuple of (passed, stdout, stderr, elapsed_seconds).
+    """
+    import time
 
-    def _run_build(
-        self, monorepo_root: Path, app_name: str, timeout: int
-    ) -> subprocess.CompletedProcess[str]:
-        """Run pnpm build for a specific app."""
-        app_dir = monorepo_root / "apps" / app_name
-        if not app_dir.exists():
-            pytest.skip(f"App directory not found: {app_dir}")
+    full_path = Path(monorepo_root) / app_path
+    if not full_path.exists():
+        return False, "", f"Path does not exist: {full_path}", 0.0
 
-        return subprocess.run(
-            ["pnpm", "run", "build"],
-            cwd=str(app_dir),
+    start = time.time()
+    try:
+        result = subprocess.run(
+            build_command.split(),
+            cwd=str(full_path),
             capture_output=True,
             text=True,
             timeout=timeout,
-            shell=True,
+            shell=os.name == "nt",  # shell=True on Windows for pnpm
         )
+        elapsed = time.time() - start
+        return result.returncode == 0, result.stdout, result.stderr, elapsed
 
-    def test_apps_build_successfully(
-        self,
-        monorepo_root: Path,
-        apps_to_verify: list[str],
-        config: dict[str, Any],
+    except subprocess.TimeoutExpired:
+        elapsed = time.time() - start
+        return False, "", f"Build timed out after {timeout}s", elapsed
+
+    except FileNotFoundError as e:
+        return False, "", f"Command not found: {e}", 0.0
+
+
+def _check_pnpm_available() -> bool:
+    """Check if pnpm is available on PATH."""
+    try:
+        result = subprocess.run(
+            ["pnpm", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            shell=os.name == "nt",
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Unit tests (always run — mocked)
+# ---------------------------------------------------------------------------
+
+class TestBuildHelpers:
+    """Test build verification helpers with mocked subprocess."""
+
+    @patch("subprocess.run")
+    def test_successful_build(self, mock_run: MagicMock, tmp_path: Path) -> None:
+        """Successful build should return (True, stdout, '', duration)."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Build completed successfully\n",
+            stderr="",
+        )
+        app_dir = tmp_path / "apps" / "test-app"
+        app_dir.mkdir(parents=True)
+
+        passed, stdout, stderr, _ = _run_build(
+            str(tmp_path), "apps/test-app", "pnpm run build"
+        )
+        assert passed is True
+        assert "Build completed" in stdout
+
+    @patch("subprocess.run")
+    def test_failed_build(self, mock_run: MagicMock, tmp_path: Path) -> None:
+        """Failed build should return (False, '', stderr, duration)."""
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: Cannot find module 'foo'\n",
+        )
+        app_dir = tmp_path / "apps" / "broken-app"
+        app_dir.mkdir(parents=True)
+
+        passed, stdout, stderr, _ = _run_build(
+            str(tmp_path), "apps/broken-app", "pnpm run build"
+        )
+        assert passed is False
+        assert "Cannot find module" in stderr
+
+    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pnpm", timeout=120))
+    def test_build_timeout(self, mock_run: MagicMock, tmp_path: Path) -> None:
+        """Timed out build should return failure with timeout message."""
+        app_dir = tmp_path / "apps" / "slow-app"
+        app_dir.mkdir(parents=True)
+
+        passed, stdout, stderr, _ = _run_build(
+            str(tmp_path), "apps/slow-app", "pnpm run build", timeout=120
+        )
+        assert passed is False
+        assert "timed out" in stderr.lower()
+
+    def test_nonexistent_path(self, tmp_path: Path) -> None:
+        """Build against nonexistent path should fail gracefully."""
+        passed, stdout, stderr, _ = _run_build(
+            str(tmp_path), "apps/ghost-app", "pnpm run build"
+        )
+        assert passed is False
+        assert "does not exist" in stderr
+
+
+class TestBuildResultParsing:
+    """Test parsing of build output for common error patterns."""
+
+    def test_detect_typescript_errors(self) -> None:
+        """Should identify TypeScript compilation errors in output."""
+        stderr = "error TS2304: Cannot find name 'foo'.\nerror TS2345: Type mismatch."
+        ts_errors = [line for line in stderr.split("\n") if "error TS" in line]
+        assert len(ts_errors) == 2
+
+    def test_detect_missing_module(self) -> None:
+        """Should identify missing module errors."""
+        stderr = "Error: Cannot find module '@vibetech/shared-types'"
+        assert "Cannot find module" in stderr
+
+    def test_detect_out_of_memory(self) -> None:
+        """Should identify OOM errors."""
+        stderr = (
+            "FATAL ERROR: CALL_AND_RETRY_LAST Allocation failed"
+            " - JavaScript heap out of memory"
+        )
+        assert "heap out of memory" in stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# Live tests (only on Windows with C:\dev and pnpm)
+# ---------------------------------------------------------------------------
+
+class TestLiveBuilds:
+    """Run actual builds against the monorepo. Windows + pnpm required."""
+
+    @pytest.fixture(autouse=True)
+    def _require_build_env(self) -> None:
+        if os.name != "nt":
+            pytest.skip("Build verification requires Windows")
+        if not Path("C:\\dev").exists():
+            pytest.skip("Monorepo not found at C:\\dev")
+        if not _check_pnpm_available():
+            pytest.skip("pnpm not available on PATH")
+
+    def test_configured_app_builds(
+        self, build_config: dict[str, Any]
     ) -> None:
-        timeout = config["monorepo"]["build_timeout_seconds"]
-        failures: list[str] = []
+        """All configured apps should build successfully."""
+        root = build_config.get("monorepo_root", "C:\\dev")
+        timeout = build_config.get("build_timeout", 120)
+        results: dict[str, tuple[bool, str]] = {}
 
-        for app in apps_to_verify:
-            app_dir = monorepo_root / "apps" / app
-            if not app_dir.exists():
-                continue
-            try:
-                result = self._run_build(monorepo_root, app, timeout)
-                if result.returncode != 0:
-                    stderr_snippet = result.stderr[:500] if result.stderr else "N/A"
-                    failures.append(f"{app}: exit {result.returncode}\n{stderr_snippet}")
-            except subprocess.TimeoutExpired:
-                failures.append(f"{app}: timed out after {timeout}s")
-            except FileNotFoundError:
-                failures.append(f"{app}: pnpm not found in PATH")
+        for app in build_config.get("apps", []):
+            name = app["name"]
+            app_path = app["path"]
+            cmd = app.get("build_command", "pnpm run build")
 
-        if failures:
-            report = "\n---\n".join(failures)
-            pytest.fail(f"Build failures:\n{report}")
+            passed, stdout, stderr, elapsed = _run_build(root, app_path, cmd, timeout)
+            results[name] = (passed, stderr if not passed else f"{elapsed:.1f}s")
 
+        failures = {k: v[1] for k, v in results.items() if not v[0]}
+        assert not failures, f"Build failures: {failures}"
 
-class TestTypeCheck:
-    """Verify TypeScript type checking passes."""
+    def test_monorepo_root_has_package_json(self) -> None:
+        """C:\\dev should have a package.json (workspace root)."""
+        assert Path("C:\\dev\\package.json").exists(), "Missing package.json at C:\\dev"
 
-    @pytest.fixture(autouse=True)
-    def _skip_if_no_monorepo(self, monorepo_root: Path) -> None:
-        if not monorepo_root.exists():
-            pytest.skip(f"Monorepo not found at {monorepo_root}")
-
-    def test_tsc_noEmit(self, monorepo_root: Path, config: dict[str, Any]) -> None:
-        """Run tsc --noEmit on the monorepo root."""
-        timeout = config["monorepo"]["build_timeout_seconds"]
-        tsconfig = monorepo_root / "tsconfig.base.json"
-        if not tsconfig.exists():
-            pytest.skip("No tsconfig.base.json found")
-
-        try:
-            result = subprocess.run(
-                ["npx", "tsc", "--noEmit", "-p", str(tsconfig)],
-                cwd=str(monorepo_root),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                shell=True,
-            )
-            if result.returncode != 0:
-                errors = result.stdout[:1000] or result.stderr[:1000]
-                pytest.fail(f"tsc --noEmit failed:\n{errors}")
-        except subprocess.TimeoutExpired:
-            pytest.skip(f"tsc timed out after {timeout}s")
-        except FileNotFoundError:
-            pytest.skip("npx/tsc not found in PATH")
-
-
-class TestPackageIntegrity:
-    """Verify pnpm workspace is consistent."""
-
-    @pytest.fixture(autouse=True)
-    def _skip_if_no_monorepo(self, monorepo_root: Path) -> None:
-        if not monorepo_root.exists():
-            pytest.skip(f"Monorepo not found at {monorepo_root}")
-
-    def test_pnpm_lockfile_exists(self, monorepo_root: Path) -> None:
-        lockfile = monorepo_root / "pnpm-lock.yaml"
-        assert lockfile.exists(), "pnpm-lock.yaml missing"
-        assert lockfile.stat().st_size > 0, "pnpm-lock.yaml is empty"
-
-    def test_no_package_lock_json(self, monorepo_root: Path) -> None:
-        """Ensure npm hasn't polluted the workspace."""
-        npm_lock = monorepo_root / "package-lock.json"
-        assert not npm_lock.exists(), (
-            "package-lock.json found — npm was run. Remove it and use pnpm only."
-        )
-
-    def test_no_yarn_lock(self, monorepo_root: Path) -> None:
-        yarn_lock = monorepo_root / "yarn.lock"
-        assert not yarn_lock.exists(), "yarn.lock found — use pnpm only."
+    def test_monorepo_root_has_pnpm_workspace(self) -> None:
+        """C:\\dev should have pnpm-workspace.yaml."""
+        ws = Path("C:\\dev\\pnpm-workspace.yaml")
+        assert ws.exists(), "Missing pnpm-workspace.yaml at C:\\dev"

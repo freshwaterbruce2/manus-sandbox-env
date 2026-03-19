@@ -1,0 +1,104 @@
+# =============================================================================
+# Vibetech Automated Testing System — Configuration
+# =============================================================================
+# This config drives all four test categories:
+#   1. Agent output validation (experiments/)
+#   2. API endpoint smoke tests (Express, OpenRouter)
+#   3. SQLite integrity checks (D:\databases\, D:\learning-system\)
+#   4. Build verification (pnpm builds in C:\dev monorepo)
+# =============================================================================
+
+# --- Agent Output Validation ---
+agent_validation:
+  experiments_dir: "experiments"
+  # File extensions to check for valid syntax
+  code_extensions:
+    - ".py"
+    - ".ts"
+    - ".tsx"
+    - ".js"
+    - ".jsx"
+  # JSON schema validation targets
+  json_extensions:
+    - ".json"
+    - ".jsonl"
+  # Maximum allowed file size in bytes (1MB)
+  max_file_size: 1048576
+  # Patterns that should NOT appear in agent output
+  forbidden_patterns:
+    - "API_KEY="
+    - "SECRET="
+    - "password="
+    - "sk-"
+  # Expected output patterns (at least one must match for .py files)
+  expected_python_patterns:
+    - "def "
+    - "class "
+    - "import "
+    - "print("
+
+# --- API Endpoint Smoke Tests ---
+api_smoke:
+  # Request timeout in seconds
+  timeout: 10
+  # Maximum acceptable latency in seconds
+  max_latency: 5.0
+  endpoints:
+    express_backend:
+      base_url: "http://localhost:5177"
+      health_path: "/health"
+      test_paths:
+        - path: "/api/status"
+          method: "GET"
+          expected_status: 200
+        - path: "/health"
+          method: "GET"
+          expected_status: 200
+    openrouter_proxy:
+      base_url: "http://localhost:3001"
+      health_path: "/health"
+      test_paths:
+        - path: "/health"
+          method: "GET"
+          expected_status: 200
+        - path: "/v1/models"
+          method: "GET"
+          expected_status: 200
+
+# --- SQLite Integrity Checks ---
+sqlite_integrity:
+  databases:
+    - name: "main_databases"
+      # Windows path — tests will normalize for cross-platform
+      path: "D:\\databases"
+      extension: ".db"
+      # Expected tables (at least these should exist)
+      expected_tables: []
+      # Row count sanity: warn if any table exceeds this
+      max_row_count: 10000000
+    - name: "learning_system"
+      path: "D:\\learning-system"
+      extension: ".db"
+      expected_tables: []
+      max_row_count: 5000000
+  # Run PRAGMA integrity_check on each DB
+  run_integrity_check: true
+  # Run foreign key consistency check
+  run_foreign_key_check: true
+
+# --- Build Verification ---
+build_verification:
+  monorepo_root: "C:\\dev"
+  package_manager: "pnpm"
+  # Timeout per build in seconds
+  build_timeout: 120
+  # Apps to verify (add/remove as needed)
+  apps:
+    - name: "nova-agent"
+      path: "apps\\nova-agent"
+      build_command: "pnpm run build"
+    - name: "vtde"
+      path: "apps\\vtde"
+      build_command: "pnpm run build"
+  # Packages to verify
+  packages: []

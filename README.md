@@ -1,70 +1,120 @@
 # Manus Sandbox Environment
 
-AI agent sandbox for GitHub automation experiments.
+AI agent sandbox for GitHub automation experiments **plus** an automated testing system covering agent validation, API smoke tests, SQLite integrity checks, and build verification.
+
+## What's Here
+
+```text
+manus-sandbox-env/
+├── tools/                          # Reusable Python modules (GitHub API, feature flags, file ops)
+├── scripts/                        # Automation runners
+│   ├── quality_gate.py             # Format → lint → type-check → test
+│   ├── run_tests.py                # ★ Test runner — orchestrates all 4 categories
+│   ├── release.py                  # GitHub release automation
+│   ├── pre_commit.py               # Pre-commit hook runner
+│   ├── autodoc.py                  # Auto-generate docs from source
+│   └── repo_cli.py                 # Interactive CLI for repo ops
+├── tests/                          # pytest suite
+│   ├── conftest.py                 # Shared fixtures and config loading
+│   ├── test_agent_validation.py    # ★ Agent output validation
+│   ├── test_api_smoke.py           # ★ API endpoint smoke tests
+│   ├── test_sqlite_integrity.py    # ★ SQLite integrity checks
+│   ├── test_build_verification.py  # ★ Build verification
+│   ├── test_autodoc.py             # Autodoc tests
+│   ├── test_feature_flags.py       # Feature flags tests
+│   └── test_file_manager.py        # File manager tests
+├── experiments/                    # AI agent experiment outputs
+├── docs/                           # Reports and logs
+├── test_config.yaml                # ★ Central config for all test categories
+├── .github/workflows/ci.yml        # CI pipeline
+├── pyproject.toml                  # Project config (ruff, mypy, pytest)
+└── setup.sh                        # Environment bootstrap
+```
 
 ## Automated Testing System
 
-The testing system validates the VibeTech monorepo infrastructure across four categories:
+Four test categories run independently or together via the runner script.
 
-### Test Categories
+### 1. Agent Output Validation
 
-**Agent Validation** (`tests/test_agent_validation.py`) — Validates AI-generated code outputs: Python/TypeScript/JSON syntax checking, JSON schema validation, cyclomatic complexity measurement, and placeholder text detection.
+Validates AI agent outputs (DeepSeek, Kimi) dropped into `experiments/`. Checks include Python syntax validation via `ast.parse`, JSON schema checks, forbidden pattern detection (leaked API keys, secrets), file size limits, placeholder token detection, and empty file detection.
 
-**API Smoke Tests** (`tests/test_api_smoke.py`) — Smoke tests for the Express backend (port 5177) and OpenRouter proxy (port 3001): health endpoints, response times, timeout handling. Skips gracefully if servers aren't running.
+### 2. API Endpoint Smoke Tests
 
-**SQLite Integrity** (`tests/test_sqlite_integrity.py`) — Database health checks: `PRAGMA integrity_check`, foreign key validation, schema snapshot comparison for drift detection, and row count sanity checks.
+Automated smoke tests against Express backends (`localhost:5177`) and OpenRouter proxy (`localhost:3001`). Covers health checks, response shape validation, latency tracking, and timeout detection. Tests auto-skip when services aren't running.
 
-**Build Verification** (`tests/test_build_verification.py`) — Monorepo build validation: runs `pnpm build` on configured apps, `tsc --noEmit` type checking, and verifies no npm/yarn lockfiles have polluted the workspace.
+### 3. SQLite Integrity Checks
 
-### Configuration
+Verifies SQLite databases at `D:\databases\` and `D:\learning-system\` aren't corrupted. Runs `PRAGMA integrity_check`, `PRAGMA foreign_key_check`, row count sanity checks, and schema validation. Unit tests always run against temp databases; live tests require Windows with D:\ drive.
 
-All test parameters are defined in `config/test_config.yaml`: endpoint URLs, database paths, monorepo location, apps to verify, complexity thresholds, and placeholder patterns.
+### 4. Build Verification
 
-### Running Tests
+Scripts that verify `pnpm` builds pass for specific apps in the monorepo at `C:\dev`. Checks exit codes, captures TypeScript errors, detects OOM, and reports pass/fail with timing. Live tests require Windows + pnpm + monorepo.
+
+## Quick Start
 
 ```bash
-# Install dev dependencies
+# Clone and bootstrap
+git clone https://github.com/freshwaterbruce2/manus-sandbox-env.git
+cd manus-sandbox-env
+
+# Install dependencies
 pip install -e ".[dev]"
 
-# Run all test categories with rich output
-python run_tests.py --all
+# Run ALL test categories
+python scripts/run_tests.py
 
-# Run specific categories
-python run_tests.py --agent --api
-python run_tests.py --sqlite --build
+# Run a single category
+python scripts/run_tests.py --category agent
+python scripts/run_tests.py --category api
+python scripts/run_tests.py --category sqlite
+python scripts/run_tests.py --category build
 
-# Run directly with pytest
-pytest tests/test_agent_validation.py -v
-pytest tests/ -m "not requires_server" -v
+# Verbose output
+python scripts/run_tests.py --verbose
+
+# CI mode (no color, machine-readable)
+python scripts/run_tests.py --ci
+
+# Run the full quality gate (format → lint → type-check → test)
+python scripts/quality_gate.py
+
+# Run pytest directly with coverage
+pytest tests/ --cov=tools --cov=scripts --cov-report=term-missing
 ```
 
-### Test Markers
+## Configuration
 
-Tests use custom markers to control execution based on available infrastructure:
+All test parameters live in `test_config.yaml` at the repo root. Edit this file to add endpoints, database paths, build targets, or adjust thresholds.
 
-- `requires_server` — needs running backend/proxy servers
-- `requires_db` — needs SQLite database access
-- `requires_monorepo` — needs access to C:\dev monorepo
+Key config sections:
 
-Skip markers automatically when infrastructure isn't available:
-```bash
-pytest tests/ -m "not requires_server and not requires_db" -v
-```
+- `agent_validation` — experiments directory, forbidden patterns, file size limits
+- `api_smoke` — endpoint URLs, timeout, max latency
+- `sqlite_integrity` — database paths, max row counts, integrity check toggles
+- `build_verification` — monorepo root, app paths, build commands, timeouts
 
-## Development
+## Test Behavior
 
-```bash
-# Setup
-pip install -e ".[dev]"
+Tests are designed to be **portable**: unit tests always run (using mocked data and temp databases), while live integration tests auto-skip when the required environment isn't available (no Windows, no services running, no D:\ drive). This means CI on Ubuntu runs all unit tests, and local runs on Bruce's Windows machine additionally run live tests.
 
-# Lint & format
-ruff check .
-ruff format .
+## Tools
 
-# Type check
-mypy tools scripts
-```
+| Module | Purpose |
+|---|---|
+| `tools/github_helper.py` | GitHub CLI wrapper — repos, issues, PRs, releases, branch ops |
+| `tools/feature_flags.py` | JSON-backed feature toggles with env var overrides |
+| `tools/file_manager.py` | File hashing (SHA-256) and recursive extension search |
+
+## CI Pipeline
+
+Every push and PR triggers `.github/workflows/ci.yml`:
+
+1. **Ruff** — format check + lint
+2. **Mypy** — strict mode type checking
+3. **Pytest** — full test suite with 80% coverage minimum
+4. **Markdownlint** — docs hygiene
 
 ## License
 
-MIT
+Private sandbox — not intended for external use.

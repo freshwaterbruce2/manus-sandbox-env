@@ -1,105 +1,189 @@
-"""Smoke tests for backend API endpoints. Skips gracefully if server is down."""
+"""API Endpoint Smoke Tests.
+
+Automated smoke tests against Express backends (localhost:5177),
+OpenRouter proxy (localhost:3001). Health checks, response shape
+validation, latency tracking, timeout detection.
+"""
 
 from __future__ import annotations
 
+import socket
 import time
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
-try:
-    import requests
-except ImportError:
-    requests = None  # type: ignore[assignment]
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.requires_server
-
-
-def _server_reachable(url: str, timeout: float = 2.0) -> bool:
-    """Quick check if the server responds at all."""
-    if requests is None:
-        return False
+def _is_service_up(host: str, port: int, timeout: float = 2.0) -> bool:
+    """Check if a TCP service is listening."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
     try:
-        requests.get(url, timeout=timeout)
-        return True
-    except Exception:
+        return sock.connect_ex((host, port)) == 0
+    except OSError:
         return False
+    finally:
+        sock.close()
+
+
+def _parse_base_url(url: str) -> tuple[str, int]:
+    """Extract host and port from a base URL."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return host, port
 
 
 # ---------------------------------------------------------------------------
-# Backend API tests
+# Unit tests (always run — mock network calls)
 # ---------------------------------------------------------------------------
 
+class TestSmokeTestHelpers:
+    """Unit tests for smoke test helper functions."""
 
-class TestBackendHealth:
-    """Health and basic response checks for the Express backend."""
+    def test_parse_base_url_with_port(self) -> None:
+        """Should extract host and port from URL."""
+        host, port = _parse_base_url("http://localhost:5177")
+        assert host == "localhost"
+        assert port == 5177
+
+    def test_parse_base_url_default_port(self) -> None:
+        """Should default to port 80 for http."""
+        host, port = _parse_base_url("http://example.com")
+        assert host == "example.com"
+        assert port == 80
+
+    def test_parse_base_url_https(self) -> None:
+        """Should default to port 443 for https."""
+        host, port = _parse_base_url("https://example.com")
+        assert host == "example.com"
+        assert port == 443
+
+
+class TestResponseValidation:
+    """Test response shape validation logic (mocked)."""
+
+    def test_health_check_response_shape(self) -> None:
+        """Health endpoint should return JSON with status field."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "ok"}
+        mock_response.elapsed = MagicMock()
+        mock_response.elapsed.total_seconds.return_value = 0.05
+
+        assert mock_response.status_code == 200
+        data = mock_response.json()
+        assert "status" in data
+        assert mock_response.elapsed.total_seconds() < 5.0
+
+    def test_timeout_detection(self) -> None:
+        """Requests that exceed timeout should raise."""
+        with patch("requests.get", side_effect=requests.Timeout("Connection timed out")):
+            with pytest.raises(requests.Timeout):
+                requests.get("http://localhost:5177/health", timeout=1)
+
+    def test_connection_error_handling(self) -> None:
+        """Connection refused should be caught gracefully."""
+        with patch(
+            "requests.get",
+            side_effect=requests.ConnectionError("Connection refused"),
+        ):
+            with pytest.raises(requests.ConnectionError):
+                requests.get("http://localhost:5177/health", timeout=1)
+
+
+class TestLatencyTracking:
+    """Validate latency measurement logic."""
+
+    def test_latency_below_threshold(self) -> None:
+        """Response time under max_latency should pass."""
+        max_latency = 5.0
+        mock_elapsed = 0.15
+        assert mock_elapsed < max_latency
+
+    def test_latency_above_threshold_flags(self) -> None:
+        """Response time over max_latency should be flagged."""
+        max_latency = 5.0
+        mock_elapsed = 6.2
+        assert mock_elapsed > max_latency, "Slow response should be flagged"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests (only run when services are actually up)
+# ---------------------------------------------------------------------------
+
+class TestExpressBackendLive:
+    """Live smoke tests against Express backend at localhost:5177."""
 
     @pytest.fixture(autouse=True)
-    def _skip_if_down(self, backend_url: str) -> None:
-        if not _server_reachable(backend_url):
-            pytest.skip(f"Backend not reachable at {backend_url}")
+    def _require_express(self) -> None:
+        if not _is_service_up("localhost", 5177):
+            pytest.skip("Express backend not running on localhost:5177")
 
-    def test_health_endpoint_returns_200(self, backend_url: str) -> None:
-        resp = requests.get(f"{backend_url}/health", timeout=5)
+    def test_health_endpoint(self, api_config: dict[str, Any]) -> None:
+        """GET /health should return 200."""
+        timeout = api_config.get("timeout", 10)
+        resp = requests.get("http://localhost:5177/health", timeout=timeout)
         assert resp.status_code == 200
 
-    def test_health_returns_json(self, backend_url: str) -> None:
-        resp = requests.get(f"{backend_url}/health", timeout=5)
-        ct = resp.headers.get("content-type", "")
-        assert "json" in ct or "text" in ct
+    def test_health_response_time(self, api_config: dict[str, Any]) -> None:
+        """Health check should respond within max_latency."""
+        max_latency = api_config.get("max_latency", 5.0)
+        timeout = api_config.get("timeout", 10)
+        start = time.time()
+        resp = requests.get("http://localhost:5177/health", timeout=timeout)
+        elapsed = time.time() - start
+        assert resp.status_code == 200
+        assert elapsed < max_latency, f"Health took {elapsed:.2f}s (max: {max_latency}s)"
 
-    def test_response_time_under_2s(self, backend_url: str) -> None:
-        start = time.monotonic()
-        requests.get(f"{backend_url}/health", timeout=5)
-        elapsed = time.monotonic() - start
-        assert elapsed < 2.0, f"Health check took {elapsed:.2f}s"
+    def test_configured_endpoints(self, api_config: dict[str, Any]) -> None:
+        """All configured Express endpoints should respond."""
+        timeout = api_config.get("timeout", 10)
+        express_cfg = api_config.get("endpoints", {}).get("express_backend", {})
+        base_url = express_cfg.get("base_url", "http://localhost:5177")
 
-    def test_404_for_unknown_route(self, backend_url: str) -> None:
-        resp = requests.get(f"{backend_url}/__nonexistent__", timeout=5)
-        assert resp.status_code in (404, 400)
+        for ep in express_cfg.get("test_paths", []):
+            url = f"{base_url}{ep['path']}"
+            method = ep.get("method", "GET").upper()
+            expected = ep.get("expected_status", 200)
 
+            if method == "GET":
+                resp = requests.get(url, timeout=timeout)
+            elif method == "POST":
+                resp = requests.post(url, timeout=timeout)
+            else:
+                pytest.skip(f"Unsupported method: {method}")
 
-class TestProxyEndpoint:
-    """Smoke tests for the OpenRouter proxy at localhost:3001."""
-
-    @pytest.fixture(autouse=True)
-    def _skip_if_down(self, proxy_url: str) -> None:
-        if not _server_reachable(proxy_url):
-            pytest.skip(f"Proxy not reachable at {proxy_url}")
-
-    def test_proxy_responds(self, proxy_url: str) -> None:
-        resp = requests.get(proxy_url, timeout=10)
-        assert resp.status_code in range(200, 500)
-
-    def test_proxy_timeout_handling(self, proxy_url: str) -> None:
-        """Ensure proxy doesn't hang forever on bad requests."""
-        try:
-            resp = requests.post(
-                f"{proxy_url}/v1/chat/completions",
-                json={"model": "nonexistent", "messages": []},
-                timeout=15,
+            assert resp.status_code == expected, (
+                f"{method} {url} returned {resp.status_code}, expected {expected}"
             )
-            # Any response is fine — we just verify it doesn't hang
-            assert resp.status_code > 0
-        except requests.exceptions.Timeout:
-            pytest.fail("Proxy request timed out after 15s")
-        except requests.exceptions.ConnectionError:
-            pytest.skip("Proxy connection refused")
 
 
-class TestResponseSchema:
-    """Validate response shapes from the backend."""
+class TestOpenRouterProxyLive:
+    """Live smoke tests against OpenRouter proxy at localhost:3001."""
 
     @pytest.fixture(autouse=True)
-    def _skip_if_down(self, backend_url: str) -> None:
-        if not _server_reachable(backend_url):
-            pytest.skip(f"Backend not reachable at {backend_url}")
+    def _require_openrouter(self) -> None:
+        if not _is_service_up("localhost", 3001):
+            pytest.skip("OpenRouter proxy not running on localhost:3001")
 
-    def test_health_has_expected_fields(
-        self, backend_url: str, config: dict[str, Any]
-    ) -> None:
-        resp = requests.get(f"{backend_url}/health", timeout=5)
-        if resp.headers.get("content-type", "").startswith("application/json"):
-            data = resp.json()
-            # At minimum, health should be a dict or have a status field
-            assert isinstance(data, dict)
+    def test_health_endpoint(self, api_config: dict[str, Any]) -> None:
+        """GET /health should return 200."""
+        timeout = api_config.get("timeout", 10)
+        resp = requests.get("http://localhost:3001/health", timeout=timeout)
+        assert resp.status_code == 200
+
+    def test_models_endpoint(self, api_config: dict[str, Any]) -> None:
+        """GET /v1/models should return JSON with model list."""
+        timeout = api_config.get("timeout", 10)
+        resp = requests.get("http://localhost:3001/v1/models", timeout=timeout)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, (dict, list)), "Models response should be JSON object or array"

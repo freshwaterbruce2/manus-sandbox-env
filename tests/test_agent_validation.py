@@ -1,176 +1,172 @@
-"""Validate AI agent outputs: syntax, schema, complexity, placeholders."""
+"""Agent Output Validation Tests.
+
+Validates AI agent outputs (DeepSeek, Kimi) dropped into experiments/.
+Checks: syntax validity, JSON schema, forbidden patterns, file size limits.
+"""
 
 from __future__ import annotations
 
 import ast
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-try:
-    from jsonschema import validate, ValidationError
-except ImportError:
-    validate = None  # type: ignore[assignment]
-    ValidationError = Exception  # type: ignore[misc,assignment]
+
+class TestAgentOutputSyntax:
+    """Validate that agent-generated code files have valid syntax."""
+
+    def test_python_files_parse(
+        self, sample_experiment_dir: Path, agent_config: dict[str, Any]
+    ) -> None:
+        """All .py files in experiments should parse without SyntaxError."""
+        py_files = list(sample_experiment_dir.glob("*.py"))
+        assert py_files, "No Python files found in experiment directory"
+
+        parse_results: dict[str, bool] = {}
+        for f in py_files:
+            source = f.read_text(encoding="utf-8")
+            try:
+                ast.parse(source, filename=str(f))
+                parse_results[f.name] = True
+            except SyntaxError:
+                parse_results[f.name] = False
+
+        # Report all results — don't fail on first
+        failures = [name for name, ok in parse_results.items() if not ok]
+        # We expect broken_agent_output.py to fail — that's the fixture
+        # Real runs against experiments/ should have zero failures
+        assert "broken_agent_output.py" in failures, (
+            "Expected broken_agent_output.py to have syntax errors"
+        )
+
+    def test_valid_python_files_contain_expected_patterns(
+        self, sample_experiment_dir: Path, agent_config: dict[str, Any]
+    ) -> None:
+        """Valid Python files should contain at least one expected pattern."""
+        patterns = agent_config.get("expected_python_patterns", ["def ", "class ", "import "])
+        py_files = list(sample_experiment_dir.glob("*.py"))
+
+        for f in py_files:
+            source = f.read_text(encoding="utf-8")
+            # Skip files with syntax errors
+            try:
+                ast.parse(source)
+            except SyntaxError:
+                continue
+
+            has_pattern = any(p in source for p in patterns)
+            assert has_pattern, (
+                f"{f.name} contains no expected patterns: {patterns}"
+            )
+
+    def test_json_files_are_valid(self, sample_experiment_dir: Path) -> None:
+        """All .json files should be valid JSON."""
+        json_files = list(sample_experiment_dir.glob("*.json"))
+        if not json_files:
+            pytest.skip("No JSON files to validate")
+
+        for f in json_files:
+            content = f.read_text(encoding="utf-8")
+            try:
+                parsed = json.loads(content)
+                assert isinstance(parsed, (dict, list)), (
+                    f"{f.name}: JSON root must be object or array, got {type(parsed).__name__}"
+                )
+            except json.JSONDecodeError as e:
+                pytest.fail(f"{f.name}: Invalid JSON — {e}")
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+class TestAgentOutputSecurity:
+    """Check agent outputs for leaked secrets and forbidden patterns."""
 
-def check_python_syntax(code: str) -> tuple[bool, str]:
-    """Return (valid, error_message) for Python source."""
-    try:
-        ast.parse(code)
-        return True, ""
-    except SyntaxError as exc:
-        return False, f"Line {exc.lineno}: {exc.msg}"
+    def test_no_forbidden_patterns(
+        self, sample_experiment_dir: Path, agent_config: dict[str, Any]
+    ) -> None:
+        """Agent output files must not contain secrets or API keys."""
+        forbidden = agent_config.get(
+            "forbidden_patterns", ["API_KEY=", "SECRET=", "sk-"]
+        )
+        all_files = [
+            f
+            for f in sample_experiment_dir.iterdir()
+            if f.is_file() and f.suffix in (".py", ".ts", ".tsx", ".js", ".json")
+        ]
 
+        violations: list[str] = []
+        for f in all_files:
+            content = f.read_text(encoding="utf-8")
+            for pattern in forbidden:
+                if pattern in content:
+                    violations.append(f"{f.name} contains '{pattern}'")
 
-def check_json_syntax(text: str) -> tuple[bool, str]:
-    """Return (valid, error_message) for JSON text."""
-    try:
-        json.loads(text)
-        return True, ""
-    except json.JSONDecodeError as exc:
-        return False, f"Pos {exc.pos}: {exc.msg}"
+        # leaky_output.py is expected to trigger
+        assert any("leaky_output.py" in v for v in violations), (
+            "Expected leaky_output.py to contain forbidden patterns"
+        )
 
+    def test_file_sizes_within_limit(
+        self, sample_experiment_dir: Path, agent_config: dict[str, Any]
+    ) -> None:
+        """Agent output files should not exceed configured size limit."""
+        max_size = agent_config.get("max_file_size", 1048576)  # 1MB default
+        all_files = [f for f in sample_experiment_dir.iterdir() if f.is_file()]
 
-def check_typescript_basic(code: str) -> tuple[bool, str]:
-    """Heuristic TS syntax check — unmatched braces/brackets."""
-    stack: list[str] = []
-    pairs = {")": "(", "]": "[", "}": "{"}
-    for i, ch in enumerate(code):
-        if ch in "([{":
-            stack.append(ch)
-        elif ch in ")]}":
-            if not stack or stack[-1] != pairs[ch]:
-                return False, f"Unmatched '{ch}' at position {i}"
-            stack.pop()
-    if stack:
-        return False, f"Unclosed '{stack[-1]}'"
-    return True, ""
+        oversized = []
+        for f in all_files:
+            size = f.stat().st_size
+            if size > max_size:
+                oversized.append(f"{f.name}: {size} bytes (max: {max_size})")
 
-
-def measure_complexity(code: str) -> int:
-    """Rough cyclomatic complexity for Python: count branches."""
-    branch_keywords = r"\b(if|elif|else|for|while|except|with|and|or)\b"
-    return len(re.findall(branch_keywords, code)) + 1
-
-
-def find_placeholders(text: str, patterns: list[str]) -> list[str]:
-    """Return all placeholder matches found in text."""
-    hits: list[str] = []
-    for pat in patterns:
-        hits.extend(re.findall(pat, text, re.IGNORECASE))
-    return hits
+        assert not oversized, f"Oversized files: {oversized}"
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+class TestAgentOutputStructure:
+    """Validate structural properties of agent outputs."""
 
-PLACEHOLDER_PATTERNS = [
-    r"\[your .* here\]",
-    r"TODO: implement",
-    r"FIXME",
-    r"placeholder",
-]
+    def test_no_empty_files(self, sample_experiment_dir: Path) -> None:
+        """Agent should not produce empty output files."""
+        code_exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".json"}
+        empty_files = [
+            f.name
+            for f in sample_experiment_dir.iterdir()
+            if f.is_file() and f.suffix in code_exts and f.stat().st_size == 0
+        ]
+        assert not empty_files, f"Empty agent output files: {empty_files}"
 
+    def test_no_placeholder_tokens(self, sample_experiment_dir: Path) -> None:
+        """Agent outputs should not contain common placeholder tokens."""
+        placeholders = [
+            r"\[your[\s-]?value[\s-]?here\]",
+            r"\[TODO\]",
+            r"\[PLACEHOLDER\]",
+            r"<your[\s_-]?api[\s_-]?key>",
+            r"INSERT_.*_HERE",
+        ]
+        code_exts = {".py", ".ts", ".tsx", ".js", ".jsx"}
+        found: list[str] = []
 
-class TestPythonValidation:
-    """Validate Python code outputs from agents."""
+        for f in sample_experiment_dir.iterdir():
+            if f.is_file() and f.suffix in code_exts:
+                content = f.read_text(encoding="utf-8")
+                for pat in placeholders:
+                    if re.search(pat, content, re.IGNORECASE):
+                        found.append(f"{f.name} matches placeholder: {pat}")
 
-    def test_valid_python(self) -> None:
-        ok, _ = check_python_syntax("x = 1\nprint(x)")
-        assert ok
-
-    def test_invalid_python(self) -> None:
-        ok, msg = check_python_syntax("def foo(\n  pass")
-        assert not ok
-        assert "SyntaxError" in msg or "Line" in msg
-
-    def test_empty_string_is_valid(self) -> None:
-        ok, _ = check_python_syntax("")
-        assert ok
-
-    def test_complexity_simple(self) -> None:
-        assert measure_complexity("x = 1") == 1
-
-    def test_complexity_branching(self) -> None:
-        code = "if a:\n  pass\nelif b:\n  pass\nelse:\n  pass"
-        assert measure_complexity(code) >= 4
-
-
-class TestTypeScriptValidation:
-    """Basic TS structural checks."""
-
-    def test_balanced_braces(self) -> None:
-        ok, _ = check_typescript_basic("function f() { return { a: 1 }; }")
-        assert ok
-
-    def test_unmatched_brace(self) -> None:
-        ok, msg = check_typescript_basic("function f() { return { a: 1 };")
-        assert not ok
-        assert "Unclosed" in msg
-
-    def test_empty_is_valid(self) -> None:
-        ok, _ = check_typescript_basic("")
-        assert ok
+        assert not found, f"Placeholder tokens found: {found}"
 
 
-class TestJsonValidation:
-    """Validate JSON outputs."""
+class TestExperimentsDirectory:
+    """Tests that run against the actual experiments/ directory in the repo."""
 
-    def test_valid_json(self) -> None:
-        ok, _ = check_json_syntax('{"key": "value"}')
-        assert ok
+    def test_experiments_dir_exists(self, experiments_dir: Path) -> None:
+        """The experiments/ directory must exist."""
+        assert experiments_dir.exists(), f"Missing: {experiments_dir}"
+        assert experiments_dir.is_dir(), f"Not a directory: {experiments_dir}"
 
-    def test_invalid_json(self) -> None:
-        ok, msg = check_json_syntax('{"key": }')
-        assert not ok
-
-    @pytest.mark.skipif(validate is None, reason="jsonschema not installed")
-    def test_schema_validation_pass(self) -> None:
-        schema: dict[str, Any] = {
-            "type": "object",
-            "required": ["status"],
-            "properties": {"status": {"type": "string"}},
-        }
-        validate(instance={"status": "ok"}, schema=schema)
-
-    @pytest.mark.skipif(validate is None, reason="jsonschema not installed")
-    def test_schema_validation_fail(self) -> None:
-        schema: dict[str, Any] = {
-            "type": "object",
-            "required": ["status"],
-            "properties": {"status": {"type": "string"}},
-        }
-        with pytest.raises(ValidationError):
-            validate(instance={"wrong": 123}, schema=schema)
-
-
-class TestPlaceholderDetection:
-    """Catch placeholder text in agent outputs."""
-
-    def test_no_placeholders_in_clean_text(self) -> None:
-        hits = find_placeholders("All good here.", PLACEHOLDER_PATTERNS)
-        assert hits == []
-
-    def test_catches_your_value_here(self) -> None:
-        hits = find_placeholders("Set [your API key here]", PLACEHOLDER_PATTERNS)
-        assert len(hits) >= 1
-
-    def test_catches_todo_implement(self) -> None:
-        hits = find_placeholders("# TODO: implement this", PLACEHOLDER_PATTERNS)
-        assert len(hits) >= 1
-
-    def test_catches_fixme(self) -> None:
-        hits = find_placeholders("// FIXME broken", PLACEHOLDER_PATTERNS)
-        assert len(hits) >= 1
-
-    def test_catches_placeholder_word(self) -> None:
-        hits = find_placeholders("This is a placeholder value", PLACEHOLDER_PATTERNS)
-        assert len(hits) >= 1
+    def test_experiments_has_readme(self, experiments_dir: Path) -> None:
+        """experiments/ should have a README for context."""
+        readme = experiments_dir / "README.md"
+        assert readme.exists(), "experiments/README.md missing"
