@@ -1,1 +1,49 @@
-test
+# VibeTech Monorepo Test Configuration
+# Used by the automated testing system to locate services and resources
+
+endpoints:
+  backend:
+    host: localhost
+    port: 5177
+    base_url: "http://localhost:5177"
+    health_path: "/health"
+    timeout_seconds: 10
+  openrouter_proxy:
+    host: localhost
+    port: 3001
+    base_url: "http://localhost:3001"
+    timeout_seconds: 30
+
+databases:
+  primary_dir: "D:\\databases\\"
+  learning_dir: "D:\\learning-system\\"
+  expected_dbs:
+    - name: "trading.db"
+      dir: "primary"
+    - name: "memory.db"
+      dir: "primary"
+    - name: "learning.db"
+      dir: "learning"
+
+monorepo:
+  root: "C:\\dev"
+  package_manager: "pnpm"
+  build_timeout_seconds: 120
+  apps_to_verify:
+    - "nova-agent"
+    - "vtde"
+    - "vibe-tutor"
+    - "nova-mobile-app"
+
+agent_validation:
+  max_code_complexity: 15
+  max_lines_per_file: 360
+  placeholder_patterns:
+    - "\\[your .* here\\]"
+    - "TODO: implement"
+    - "FIXME"
+    - "placeholder"
+  supported_languages:
+    - python
+    - typescript
+    - json
