@@ -1,14 +1,9 @@
 [project]
 name = "manus-sandbox-env"
-version = "2.0.0"
-description = "AI agent sandbox with automated testing system for agent validation, API smoke tests, SQLite integrity, and build verification"
+version = "1.6.0"
+description = "AI agent sandbox for GitHub automation experiments"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-
-dependencies = [
-    "requests>=2.31.0",
-    "pyyaml>=6.0.0",
-]
 
 [project.optional-dependencies]
 dev = [
@@ -16,8 +11,14 @@ dev = [
     "mypy>=1.13.0",
     "pytest>=8.0.0",
     "pytest-cov>=6.0.0",
-    "types-requests>=2.31.0",
-    "types-PyYAML>=6.0.0",
+]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "requests>=2.31.0",
+    "pyyaml>=6.0.0",
+    "rich>=13.0.0",
+    "jsonschema>=4.20.0",
 ]
 
 [tool.ruff]
@@ -25,11 +26,8 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "S"]
-ignore = ["D100", "D104", "S608", "S603", "S607"]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+select = ["E", "F", "I", "N", "D"]
+ignore = ["D100", "D104"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -58,7 +56,4 @@ addopts = [
     "--cov=scripts",
     "--cov-report=term-missing",
     "--cov-fail-under=80",
-]
-markers = [
-    "live: tests that require live services (deselect with -m 'not live')",
 ]

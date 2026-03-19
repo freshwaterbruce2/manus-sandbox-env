@@ -1,49 +1,64 @@
-# VibeTech Monorepo Test Configuration
-# Used by the automated testing system to locate services and resources
+# =============================================================================
+# Automated Testing System Configuration
+# =============================================================================
+# Centralized config for endpoints, database paths, and expected schemas.
+# Edit this file to match your environment.
 
-endpoints:
-  backend:
-    host: localhost
-    port: 5177
+api:
+  express:
     base_url: "http://localhost:5177"
-    health_path: "/health"
+    health_endpoint: "/health"
     timeout_seconds: 10
+    max_latency_ms: 2000
   openrouter_proxy:
-    host: localhost
-    port: 3001
     base_url: "http://localhost:3001"
-    timeout_seconds: 30
+    health_endpoint: "/health"
+    timeout_seconds: 15
+    max_latency_ms: 5000
 
 databases:
-  primary_dir: "D:\\databases\\"
-  learning_dir: "D:\\learning-system\\"
-  expected_dbs:
-    - name: "trading.db"
-      dir: "primary"
-    - name: "memory.db"
-      dir: "primary"
-    - name: "learning.db"
-      dir: "learning"
+  paths:
+    - "D:\\databases"
+    - "D:\\learning-system"
+  expected_extensions:
+    - ".db"
+    - ".sqlite"
+    - ".sqlite3"
+  integrity_checks:
+    max_row_count_warning: 1000000
+    min_tables_expected: 1
 
 monorepo:
   root: "C:\\dev"
   package_manager: "pnpm"
-  build_timeout_seconds: 120
-  apps_to_verify:
-    - "nova-agent"
-    - "vtde"
-    - "vibe-tutor"
-    - "nova-mobile-app"
+  build_command: "pnpm run build"
+  apps_dir: "C:\\dev\\apps"
+  packages_dir: "C:\\dev\\packages"
+  expected_app_count: 28
+  expected_package_count: 26
 
 agent_validation:
-  max_code_complexity: 15
-  max_lines_per_file: 360
-  placeholder_patterns:
-    - "\\[your .* here\\]"
-    - "TODO: implement"
-    - "FIXME"
-    - "placeholder"
-  supported_languages:
-    - python
-    - typescript
-    - json
+  json_schema:
+    max_depth: 10
+    max_size_bytes: 1048576
+  code_output:
+    allowed_languages:
+      - "python"
+      - "typescript"
+      - "javascript"
+      - "json"
+      - "yaml"
+    max_lines: 500
+  response_format:
+    require_valid_json: false
+    require_valid_syntax: true
+
+test_runner:
+  categories:
+    - "agent_validation"
+    - "api_smoke"
+    - "sqlite_integrity"
+    - "build_verification"
+  parallel: false
+  verbose: true
+  report_format: "console"

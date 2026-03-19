@@ -1,10 +1,9 @@
-"""Shared fixtures and configuration for the vibetech testing system."""
+"""Pytest fixtures and configuration for the automated testing system."""
 
 from __future__ import annotations
 
 import os
 import sqlite3
-import tempfile
 from pathlib import Path
 from typing import Any, Generator
 
@@ -12,145 +11,61 @@ import pytest
 import yaml
 
 
-def _load_config() -> dict[str, Any]:
-    """Load test_config.yaml from repo root."""
-    config_path = Path(__file__).parent.parent / "test_config.yaml"
-    if not config_path.exists():
-        pytest.skip("test_config.yaml not found at repo root")
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)  # type: ignore[no-any-return]
+def _find_config() -> Path:
+    """Locate test_config.yaml relative to repo root."""
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here.parent / "config" / "test_config.yaml",
+        here / "test_config.yaml",
+        Path(os.environ.get("TEST_CONFIG", "")),
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    pytest.skip("test_config.yaml not found - set TEST_CONFIG env var")
+    raise FileNotFoundError
 
 
 @pytest.fixture(scope="session")
-def test_config() -> dict[str, Any]:
-    """Session-scoped fixture: parsed test_config.yaml."""
-    return _load_config()
+def config() -> dict[str, Any]:
+    """Load and return the full test configuration dictionary."""
+    cfg_path = _find_config()
+    with open(cfg_path, encoding="utf-8") as fh:
+        data: dict[str, Any] = yaml.safe_load(fh)
+    return data
 
 
 @pytest.fixture(scope="session")
-def agent_config(test_config: dict[str, Any]) -> dict[str, Any]:
-    """Agent validation config section."""
-    return test_config.get("agent_validation", {})  # type: ignore[no-any-return]
+def api_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return just the api section of config."""
+    return config.get("api", {})
 
 
 @pytest.fixture(scope="session")
-def api_config(test_config: dict[str, Any]) -> dict[str, Any]:
-    """API smoke test config section."""
-    return test_config.get("api_smoke", {})  # type: ignore[no-any-return]
+def db_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return just the databases section of config."""
+    return config.get("databases", {})
 
 
 @pytest.fixture(scope="session")
-def sqlite_config(test_config: dict[str, Any]) -> dict[str, Any]:
-    """SQLite integrity config section."""
-    return test_config.get("sqlite_integrity", {})  # type: ignore[no-any-return]
+def monorepo_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return just the monorepo section of config."""
+    return config.get("monorepo", {})
 
 
 @pytest.fixture(scope="session")
-def build_config(test_config: dict[str, Any]) -> dict[str, Any]:
-    """Build verification config section."""
-    return test_config.get("build_verification", {})  # type: ignore[no-any-return]
+def agent_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return just the agent_validation section of config."""
+    return config.get("agent_validation", {})
 
 
-@pytest.fixture(scope="session")
-def experiments_dir() -> Path:
-    """Path to experiments/ directory."""
-    return Path(__file__).parent.parent / "experiments"
-
-
-@pytest.fixture
-def sample_sqlite_db() -> Generator[Path, None, None]:
-    """Create a temporary SQLite database for testing the integrity checker itself."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = Path(f.name)
-
+@pytest.fixture()
+def temp_sqlite(tmp_path: Path) -> Generator[Path, None, None]:
+    """Create a temporary SQLite database for testing."""
+    db_path = tmp_path / "test.db"
     conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-    cursor.execute(
-        "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT NOT NULL, value REAL)"
-    )
-    cursor.execute(
-        "CREATE TABLE related (id INTEGER PRIMARY KEY, test_id INTEGER, "
-        "FOREIGN KEY (test_id) REFERENCES test_table(id))"
-    )
-    for i in range(100):
-        cursor.execute(
-            "INSERT INTO test_table (name, value) VALUES (?, ?)",
-            (f"item_{i}", float(i) * 1.5),
-        )
-    for i in range(1, 51):
-        cursor.execute("INSERT INTO related (test_id) VALUES (?)", (i,))
+    conn.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.execute("INSERT INTO test_table VALUES (1, 'test')")
     conn.commit()
     conn.close()
-
     yield db_path
-
-    db_path.unlink(missing_ok=True)
-
-
-@pytest.fixture
-def sample_experiment_dir() -> Generator[Path, None, None]:
-    """Create a temp directory with sample agent output files for validation testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        d = Path(tmpdir)
-
-        # Valid Python file
-        (d / "valid_agent_output.py").write_text(
-            'import json\n\ndef process():\n    return {"status": "ok"}\n',
-            encoding="utf-8",
-        )
-
-        # Valid JSON file
-        (d / "valid_output.json").write_text(
-            '{"agent": "deepseek", "result": "success", "code": "print(1)"}',
-            encoding="utf-8",
-        )
-
-        # Invalid Python (syntax error)
-        (d / "broken_agent_output.py").write_text(
-            "def broken(\n    return None\n",
-            encoding="utf-8",
-        )
-
-        # File with forbidden pattern
-        (d / "leaky_output.py").write_text(
-            'API_KEY="sk-abc123"\ndef main():\n    pass\n',
-            encoding="utf-8",
-        )
-
-        # Valid TypeScript-like file
-        (d / "component.tsx").write_text(
-            "export const App = () => { return <div>Hello</div>; };\n",
-            encoding="utf-8",
-        )
-
-        yield d
-
-
-def is_windows() -> bool:
-    """Check if running on Windows."""
-    return os.name == "nt"
-
-
-def skip_unless_windows(reason: str = "Requires Windows environment") -> pytest.MarkDecorator:
-    """Marker to skip tests that need Windows."""
-    return pytest.mark.skipif(not is_windows(), reason=reason)
-
-
-def skip_unless_service(
-    host: str, port: int, reason: str = ""
-) -> pytest.MarkDecorator:
-    """Marker to skip tests when a network service is unavailable."""
-    import socket
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(2)
-    try:
-        result = sock.connect_ex((host, port))
-        available = result == 0
-    except OSError:
-        available = False
-    finally:
-        sock.close()
-
-    skip_reason = reason or f"Service at {host}:{port} not available"
-    return pytest.mark.skipif(not available, reason=skip_reason)
