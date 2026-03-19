@@ -11,6 +11,10 @@ dev = [
     "mypy>=1.13.0",
     "pytest>=8.0.0",
     "pytest-cov>=6.0.0",
+    "requests>=2.31.0",
+    "pyyaml>=6.0.0",
+    "rich>=13.0.0",
+    "jsonschema>=4.20.0",
 ]
 
 [tool.ruff]
@@ -48,4 +52,10 @@ addopts = [
     "--cov=scripts",
     "--cov-report=term-missing",
     "--cov-fail-under=80",
+]
+markers = [
+    "slow: marks tests as slow-running",
+    "requires_server: needs a running backend server",
+    "requires_db: needs database access",
+    "requires_monorepo: needs C:\\dev monorepo access",
 ]
