@@ -1,70 +1,70 @@
 # Manus Sandbox Environment
 
-AI agent sandbox for GitHub automation experiments. This repo is a testbed for building, validating, and iterating on Python-based GitHub automation tools — from CLI wrappers and quality gates to feature flags and file utilities.
+AI agent sandbox for GitHub automation experiments.
 
-## What's Here
+## Automated Testing System
 
-```
-manus-sandbox-env/
-├── tools/             # Reusable Python modules (GitHub API, feature flags, file ops)
-├── scripts/           # Automation runners (quality gate, release, pre-commit hooks)
-├── experiments/       # Throwaway test scripts and AI agent experiments
-├── tests/             # pytest suite for tools/ and scripts/
-├── docs/              # Reports — testing results, compatibility, quality gate logs
-├── .github/workflows/ # CI pipeline (lint, type-check, test, coverage)
-├── pyproject.toml     # Ruff, mypy, pytest config
-└── setup.sh           # One-shot environment bootstrap
-```
+The testing system validates the VibeTech monorepo infrastructure across four categories:
 
-## Quick Start
+### Test Categories
+
+**Agent Validation** (`tests/test_agent_validation.py`) — Validates AI-generated code outputs: Python/TypeScript/JSON syntax checking, JSON schema validation, cyclomatic complexity measurement, and placeholder text detection.
+
+**API Smoke Tests** (`tests/test_api_smoke.py`) — Smoke tests for the Express backend (port 5177) and OpenRouter proxy (port 3001): health endpoints, response times, timeout handling. Skips gracefully if servers aren't running.
+
+**SQLite Integrity** (`tests/test_sqlite_integrity.py`) — Database health checks: `PRAGMA integrity_check`, foreign key validation, schema snapshot comparison for drift detection, and row count sanity checks.
+
+**Build Verification** (`tests/test_build_verification.py`) — Monorepo build validation: runs `pnpm build` on configured apps, `tsc --noEmit` type checking, and verifies no npm/yarn lockfiles have polluted the workspace.
+
+### Configuration
+
+All test parameters are defined in `config/test_config.yaml`: endpoint URLs, database paths, monorepo location, apps to verify, complexity thresholds, and placeholder patterns.
+
+### Running Tests
 
 ```bash
-# Clone and bootstrap
-git clone https://github.com/freshwaterbruce2/manus-sandbox-env.git
-cd manus-sandbox-env
-bash setup.sh
-
 # Install dev dependencies
-pip install ruff mypy pytest pytest-cov
+pip install -e ".[dev]"
 
-# Run the quality gate (format → lint → type-check → test)
-python scripts/quality_gate.py
+# Run all test categories with rich output
+python run_tests.py --all
 
-# Use the GitHub helper
-python -c "from tools.github_helper import GitHubHelper; h = GitHubHelper(); print(h.whoami())"
+# Run specific categories
+python run_tests.py --agent --api
+python run_tests.py --sqlite --build
+
+# Run directly with pytest
+pytest tests/test_agent_validation.py -v
+pytest tests/ -m "not requires_server" -v
 ```
 
-## Tools
+### Test Markers
 
-| Module | Purpose |
-|---|---|
-| `tools/github_helper.py` | GitHub CLI wrapper — repos, issues, PRs, releases, branch ops |
-| `tools/feature_flags.py` | JSON-backed feature toggles with env var overrides |
-| `tools/file_manager.py` | File hashing (SHA-256) and recursive extension search |
+Tests use custom markers to control execution based on available infrastructure:
 
-## Scripts
+- `requires_server` — needs running backend/proxy servers
+- `requires_db` — needs SQLite database access
+- `requires_monorepo` — needs access to C:\dev monorepo
 
-| Script | Purpose |
-|---|---|
-| `scripts/quality_gate.py` | Runs ruff format → ruff lint → mypy → pytest → autodoc → markdownlint |
-| `scripts/release.py` | Automates GitHub releases |
-| `scripts/pre_commit.py` | Pre-commit hook runner |
-| `scripts/autodoc.py` | Auto-generates documentation from source |
-| `scripts/repo_cli.py` | Interactive CLI for common repo operations |
+Skip markers automatically when infrastructure isn't available:
+```bash
+pytest tests/ -m "not requires_server and not requires_db" -v
+```
 
-## CI Pipeline
+## Development
 
-Every push and PR triggers `.github/workflows/ci.yml`:
+```bash
+# Setup
+pip install -e ".[dev]"
 
-1. **Ruff** — format check + lint (rules: E, F, I, N, D)
-2. **Mypy** — strict mode type checking
-3. **Pytest** — full test suite with 80% coverage minimum
-4. **Markdownlint** — docs hygiene
+# Lint & format
+ruff check .
+ruff format .
 
-## Experiments
-
-The `experiments/` folder is an AI agent test harness. Scripts there are intentionally rough — they exist to test cleanup tools, formatters, and automation pipelines against messy real-world input. See [`experiments/README.md`](experiments/README.md) for details.
+# Type check
+mypy tools scripts
+```
 
 ## License
 
-Private sandbox — not intended for external use.
+MIT
